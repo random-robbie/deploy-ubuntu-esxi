@@ -117,6 +117,12 @@ packages:
   - gnupg
   - lsb-release
   - software-properties-common
+  - cloud-guest-utils
+
+# Enable disk expansion
+growpart:
+  mode: auto
+  devices: ['/']
 
 # FORCE everything to run
 runcmd:

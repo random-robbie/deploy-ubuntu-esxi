@@ -87,6 +87,7 @@ class VMManager:
             print("8. Fix CD-ROM Issues")
             print("9. Check Docker Installation")
             print("10. Destroy VM")
+            print("11. Fix Disk Expansion")
             print("0. Exit")
             print("-"*50)
             
@@ -96,7 +97,7 @@ class VMManager:
                 break
             elif choice == '1':
                 self.list_vms()
-            elif choice in ['2', '3', '4', '5', '6', '7', '8', '9', '10']:
+            elif choice in ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11']:
                 self.handle_vm_operation(choice)
             else:
                 print("❌ Invalid choice")
@@ -134,7 +135,8 @@ class VMManager:
             '7': 'fixes/fix_network.py',
             '8': 'fixes/fix_cdrom.py',
             '9': 'check_docker.py',
-            '10': 'destroy_vm.py'
+            '10': 'destroy_vm.py',
+            '11': 'fix_disk.py'
         }
         
         script_path = scripts.get(choice)
@@ -185,6 +187,42 @@ class VMManager:
                     self.run_script(script_path, vm_name)
                 else:
                     print("❌ Destruction cancelled")
+            # Special handling for disk expansion
+            elif choice == '11':
+                # Need to get VM IP first
+                try:
+                    sys.path.append(str(self.project_root))
+                    from modules.config import Config
+                    config = Config()
+                    
+                    env = os.environ.copy()
+                    env['GOVC_URL'] = f"https://{config.esxi_user}:{config.esxi_password}@{config.esxi_host}/sdk"
+                    env['GOVC_INSECURE'] = '1'
+                    
+                    # Get VM IP
+                    cmd = [config.govc_bin, 'vm.ip', vm_name]
+                    result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                    
+                    if result.returncode == 0 and result.stdout.strip():
+                        vm_ip = result.stdout.strip()
+                        if vm_ip != "0.0.0.0":
+                            print(f"Using VM IP: {vm_ip}")
+                            
+                            print("\nDisk options:")
+                            print("1. Check disk usage")
+                            print("2. Fix disk expansion")
+                            
+                            sub_choice = input("Select option: ").strip()
+                            if sub_choice == '2':
+                                self.run_script(script_path, vm_ip, 'fix')
+                            else:
+                                self.run_script(script_path, vm_ip)
+                        else:
+                            print("❌ VM has no IP address")
+                    else:
+                        print("❌ Could not get VM IP")
+                except Exception as e:
+                    print(f"❌ Error getting VM IP: {e}")
             # Special handling for cloud-init checker
             elif choice == '4':
                 print("\nCloud-init options:")
