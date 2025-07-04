@@ -50,9 +50,6 @@ def create_user_data_forced(config, ssh_key):
     
     return f"""#cloud-config
 
-# FORCE cloud-init to run even on existing systems
-datasource_list: ["NoCloud", "None"]
-
 # User configuration
 users:
   - name: ubuntu
