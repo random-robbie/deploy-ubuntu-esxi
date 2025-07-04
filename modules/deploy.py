@@ -19,7 +19,6 @@ def deploy_vm_to_esxi(config, logger):
         f'--datastore={config.datastore}',
         f'--numberOfCpus:*={config.vm_cpu}',
         f'--memorySize:*={config.vm_memory}',
-        f'--diskSize:scsi0:0={config.vm_disk_size}GB',
         f'--name={config.vm_name}',
         '--net:VM Network=VM Network',
         ova_path,

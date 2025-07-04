@@ -13,6 +13,9 @@ def configure_vm(config, logger):
     env['GOVC_INSECURE'] = '1'
     
     try:
+        # Expand disk to configured size
+        expand_vm_disk(config, logger, env)
+        
         # Upload cloud-init ISO
         upload_cloud_init_iso(config, logger, env)
         
@@ -32,6 +35,95 @@ def configure_vm(config, logger):
     except Exception as e:
         logger.error(f"VM configuration failed: {e}")
         raise
+
+def expand_vm_disk(config, logger, env):
+    """Expand VM disk to configured size"""
+    logger.info(f"Expanding VM disk to {config.vm_disk_size}GB...")
+    
+    try:
+        # Method 1: Try direct disk expansion by device name
+        cmd = [
+            config.govc_bin, 'vm.disk.change',
+            '-vm', config.vm_name,
+            '-size', f'{config.vm_disk_size}G'
+        ]
+        
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            logger.info(f"✅ Disk expanded to {config.vm_disk_size}GB")
+            return
+        else:
+            logger.warn(f"Method 1 failed: {result.stderr}")
+        
+        # Method 2: Try with disk label
+        cmd = [
+            config.govc_bin, 'vm.disk.change',
+            '-vm', config.vm_name,
+            '-disk.label', 'Hard disk 1',
+            '-size', f'{config.vm_disk_size}G'
+        ]
+        
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            logger.info(f"✅ Disk expanded to {config.vm_disk_size}GB (method 2)")
+            return
+        else:
+            logger.warn(f"Method 2 failed: {result.stderr}")
+        
+        # Method 3: Try with common disk key
+        cmd = [
+            config.govc_bin, 'vm.disk.change',
+            '-vm', config.vm_name,
+            '-disk.key', '2000',
+            '-size', f'{config.vm_disk_size}G'
+        ]
+        
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            logger.info(f"✅ Disk expanded to {config.vm_disk_size}GB (method 3)")
+            return
+        else:
+            logger.warn(f"Method 3 failed: {result.stderr}")
+        
+        # Method 4: List devices and try to find disk
+        logger.info("Listing VM devices to find disk...")
+        cmd = [config.govc_bin, 'device.ls', '-vm', config.vm_name]
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            logger.info("VM devices:")
+            logger.info(result.stdout)
+            
+            # Look for disk device in the output
+            for line in result.stdout.split('\n'):
+                if 'disk-' in line.lower() or 'harddisk' in line.lower():
+                    device_name = line.split()[0]
+                    logger.info(f"Trying to expand device: {device_name}")
+                    
+                    cmd = [
+                        config.govc_bin, 'vm.disk.change',
+                        '-vm', config.vm_name,
+                        '-disk.name', device_name,
+                        '-size', f'{config.vm_disk_size}G'
+                    ]
+                    
+                    result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        logger.info(f"✅ Disk expanded to {config.vm_disk_size}GB (device: {device_name})")
+                        return
+        
+        # If all methods fail, log error but continue
+        logger.error("All disk expansion methods failed")
+        logger.info("VM will be deployed with original disk size")
+        logger.info("Use 'python3 scripts/test_disk_expansion.py <vm-name>' to expand manually")
+        
+    except Exception as e:
+        logger.error(f"Error during disk expansion: {e}")
+        logger.info("VM will be deployed with original disk size")
 
 def upload_cloud_init_iso(config, logger, env):
     """Upload cloud-init ISO to datastore"""
