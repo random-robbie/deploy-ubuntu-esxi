@@ -1,12 +1,12 @@
-"""Create cloud-init ISO with FORCED configuration"""
+"""Create cloud-init ISO with FIXED configuration for security testing"""
 
 import os
 import subprocess
 import shutil
 
 def create_cloud_init_iso(config, logger):
-    """Create cloud-init ISO that FORCES hostname and networking"""
-    logger.info("Creating cloud-init configuration with FORCED settings...")
+    """Create cloud-init ISO that FORCES hostname and networking with proper error handling"""
+    logger.info("Creating cloud-init configuration with FIXED settings...")
     
     # Read SSH key if available
     ssh_key = ""
@@ -17,7 +17,7 @@ def create_cloud_init_iso(config, logger):
     else:
         logger.warn("No SSH key found - using password authentication only")
     
-    # Create user-data with FORCED settings
+    # Create user-data with FIXED settings
     user_data_content = create_user_data_forced(config, ssh_key)
     user_data_path = os.path.join(config.work_dir, "user-data")
     with open(user_data_path, 'w') as f:
@@ -29,7 +29,7 @@ def create_cloud_init_iso(config, logger):
     with open(meta_data_path, 'w') as f:
         f.write(meta_data_content)
     
-    # Create network-config to force DHCP
+    # Create network-config to force DHCP with proper permissions
     network_config_content = create_network_config()
     network_config_path = os.path.join(config.work_dir, "network-config")
     with open(network_config_path, 'w') as f:
@@ -42,7 +42,7 @@ def create_cloud_init_iso(config, logger):
     logger.info(f"✅ Cloud-init ISO created: {iso_path}")
 
 def create_user_data_forced(config, ssh_key):
-    """Generate cloud-init user-data with FORCED execution"""
+    """Generate cloud-init user-data with FIXED execution and proper error handling"""
     ssh_keys_section = ""
     if ssh_key:
         ssh_keys_section = f"""    ssh_authorized_keys:
@@ -75,7 +75,7 @@ fqdn: {config.vm_hostname}.local
 preserve_hostname: false
 manage_etc_hosts: true
 
-# Force network configuration
+# Force network configuration with proper permissions
 write_files:
   - path: /etc/netplan/50-cloud-init.yaml
     content: |
@@ -90,10 +90,57 @@ write_files:
             dhcp4: true
             dhcp4-overrides:
               use-hostname: false
-    permissions: '0644'
+    permissions: '0600'
+    owner: root:root
   - path: /etc/hostname
     content: {config.vm_hostname}
     permissions: '0644'
+    owner: root:root
+  - path: /home/ubuntu/install-docker.sh
+    content: |
+      #!/bin/bash
+      set -e
+      
+      echo "Installing Docker with error handling..."
+      
+      # Check internet connectivity first
+      if ! ping -c 1 8.8.8.8 > /dev/null 2>&1; then
+          echo "Warning: No internet connectivity, Docker installation may fail"
+          exit 1
+      fi
+      
+      # Add Docker's official GPG key and repository
+      apt-get update
+      apt-get install -y ca-certificates curl gnupg lsb-release
+      
+      # Create keyring directory
+      mkdir -p /etc/apt/keyrings
+      
+      # Add Docker GPG key
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      chmod a+r /etc/apt/keyrings/docker.gpg
+      
+      # Add Docker repository
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+      
+      # Update and install Docker
+      apt-get update
+      apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      
+      # Start and enable Docker
+      systemctl enable docker
+      systemctl start docker
+      
+      # Add ubuntu user to docker group
+      usermod -aG docker ubuntu
+      
+      # Test Docker installation
+      docker --version
+      systemctl is-active docker
+      
+      echo "Docker installation completed successfully"
+    permissions: '0755'
+    owner: root:root
 
 # Install packages
 packages:
@@ -121,8 +168,12 @@ growpart:
   mode: auto
   devices: ['/']
 
-# FORCE everything to run
+# FIXED runcmd with proper error handling
 runcmd:
+  # Fix netplan permissions first
+  - chmod 600 /etc/netplan/50-cloud-init.yaml
+  - chown root:root /etc/netplan/50-cloud-init.yaml
+  
   # FORCE hostname change immediately
   - hostnamectl set-hostname {config.vm_hostname}
   - echo "{config.vm_hostname}" > /etc/hostname
@@ -135,40 +186,59 @@ runcmd:
   # FORCE SSH configuration
   - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
   - sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
-  - systemctl restart ssh
+  - systemctl restart ssh || systemctl restart sshd
   
-  # FORCE network restart
-  - netplan generate
-  - netplan apply
-  - systemctl restart systemd-networkd
-  - systemctl restart networking
+  # Fix network configuration with proper error handling
+  - |
+    set +e  # Don't exit on errors for network commands
+    echo "Configuring network..."
+    netplan generate
+    netplan apply
+    # Try different network restart methods
+    systemctl restart systemd-networkd || true
+    systemctl restart NetworkManager || true
+    # Legacy networking service (may not exist)
+    systemctl restart networking || echo "networking.service not found (this is normal on newer systems)"
+    echo "Network configuration completed"
   
-  # Install Docker using official script with error handling
+  # Wait for network to settle
+  - sleep 10
+  
+  # Install Docker with better error handling
   - |
     set -e
-    echo "Installing Docker..."
-    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-    sh /tmp/get-docker.sh
-    rm /tmp/get-docker.sh
-  - usermod -aG docker ubuntu
-  - systemctl enable docker
-  - systemctl start docker
-  - sleep 5
+    echo "Starting Docker installation..."
+    if ping -c 1 8.8.8.8 > /dev/null 2>&1; then
+        /home/ubuntu/install-docker.sh
+        echo "Docker installation successful"
+    else
+        echo "ERROR: No internet connectivity - Docker installation skipped"
+        echo "Manual installation required after network is fixed"
+    fi
   
-  # Verify Docker installation
-  - docker --version
-  - systemctl is-active docker
+  # Install Go {config.go_version} with error handling
+  - |
+    set -e
+    echo "Installing Go {config.go_version}..."
+    if ping -c 1 golang.org > /dev/null 2>&1; then
+        cd /tmp
+        wget -q https://golang.org/dl/go{config.go_version}.linux-amd64.tar.gz
+        tar -xzf go{config.go_version}.linux-amd64.tar.gz -C /usr/local
+        rm go{config.go_version}.linux-amd64.tar.gz
+        echo "Go installation successful"
+    else
+        echo "ERROR: Cannot reach golang.org - Go installation skipped"
+    fi
   
-  # Prepare for Docker rootless mode
-  - apt-get update
-  - apt-get install -y uidmap dbus-user-session slirp4netns fuse-overlayfs
-  - echo 'kernel.unprivileged_userns_clone=1' >> /etc/sysctl.conf
-  - sysctl -p
+  # Set up Go environment
+  - echo 'export PATH=$PATH:/usr/local/go/bin' >> /home/ubuntu/.bashrc
+  - echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile
+  - mkdir -p /home/ubuntu/go/{{bin,src,pkg}}
+  - echo 'export GOPATH=/home/ubuntu/go' >> /home/ubuntu/.bashrc
+  - echo 'export PATH=$PATH:$GOPATH/bin' >> /home/ubuntu/.bashrc
+  - chown -R ubuntu:ubuntu /home/ubuntu/go
   
-  # Enable lingering for ubuntu user (required for rootless)
-  - loginctl enable-linger ubuntu
-  
-  # Create improved rootless setup script
+  # Create improved rootless Docker setup script
   - |
     cat > /home/ubuntu/setup-docker-rootless.sh << 'EOF'
     #!/bin/bash
@@ -179,11 +249,26 @@ runcmd:
     # Ensure we're running as ubuntu user
     if [ "$(whoami)" != "ubuntu" ]; then
         echo "Error: This script must be run as the ubuntu user"
+        echo "Usage: sudo -u ubuntu ./setup-docker-rootless.sh"
         exit 1
     fi
     
-    # Stop system Docker for this user
-    sudo systemctl disable --now docker.service docker.socket 2>/dev/null || true
+    # Check if Docker is installed
+    if ! command -v docker > /dev/null 2>&1; then
+        echo "Error: Docker is not installed. Please install Docker first."
+        exit 1
+    fi
+    
+    # Install prerequisites for rootless mode
+    sudo apt-get update
+    sudo apt-get install -y uidmap dbus-user-session slirp4netns fuse-overlayfs
+    
+    # Enable unprivileged user namespaces
+    echo 'kernel.unprivileged_userns_clone=1' | sudo tee -a /etc/sysctl.conf
+    sudo sysctl -p
+    
+    # Enable lingering for ubuntu user
+    sudo loginctl enable-linger ubuntu
     
     # Set up environment
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -213,29 +298,60 @@ runcmd:
   - chmod +x /home/ubuntu/setup-docker-rootless.sh
   - chown ubuntu:ubuntu /home/ubuntu/setup-docker-rootless.sh
   
-  # Install Go {config.go_version}
-  - wget -c https://golang.org/dl/go{config.go_version}.linux-amd64.tar.gz -O - | tar -xz -C /usr/local
-  - echo 'export PATH=$PATH:/usr/local/go/bin' >> /home/ubuntu/.bashrc
-  - echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile
-  - mkdir -p /home/ubuntu/go/{{bin,src,pkg}}
-  - echo 'export GOPATH=/home/ubuntu/go' >> /home/ubuntu/.bashrc
-  - echo 'export PATH=$PATH:$GOPATH/bin' >> /home/ubuntu/.bashrc
-  - chown -R ubuntu:ubuntu /home/ubuntu/go
+  # Create network troubleshooting script
+  - |
+    cat > /home/ubuntu/fix-network.sh << 'EOF'
+    #!/bin/bash
+    echo "Network troubleshooting script"
+    echo "Current network configuration:"
+    ip addr show
+    echo ""
+    echo "Fixing netplan permissions..."
+    sudo chmod 600 /etc/netplan/50-cloud-init.yaml
+    echo "Regenerating network configuration..."
+    sudo netplan generate
+    sudo netplan apply
+    echo "Restarting network services..."
+    sudo systemctl restart systemd-networkd
+    echo "Network fix attempt completed"
+    EOF
+  - chmod +x /home/ubuntu/fix-network.sh
+  - chown ubuntu:ubuntu /home/ubuntu/fix-network.sh
   
-  # FORCE final network restart
-  - sleep 10
-  - systemctl restart systemd-networkd
-  - dhclient -r && dhclient
+  # Generate SSH host keys if missing
+  - |
+    if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
+        echo "Generating SSH host keys..."
+        ssh-keygen -A
+    fi
+  
+  # Final network restart with proper error handling
+  - |
+    set +e
+    echo "Final network configuration..."
+    sleep 5
+    systemctl restart systemd-networkd || true
+    # Force DHCP renewal
+    dhclient -r || true
+    sleep 2
+    dhclient || true
+    echo "Network configuration completed"
 
-# Force reboot to apply all changes
-power_state:
-  delay: now
-  mode: reboot
-  message: "Rebooting to apply hostname and network changes"
-  timeout: 30
-  condition: true
-
-final_message: "VM configured with hostname {config.vm_hostname}! Login: ubuntu/ubuntu\nDocker installed and verified. For rootless mode: ./setup-docker-rootless.sh\nTest standard Docker: docker ps (after logout/login)"
+# Don't force reboot - let it complete naturally
+final_message: |
+  VM configured with hostname {config.vm_hostname}!
+  Login: ubuntu/ubuntu
+  
+  Docker installed (if internet was available during setup)
+  For rootless Docker mode: ./setup-docker-rootless.sh
+  Test Docker: docker ps (after logout/login)
+  
+  Go {config.go_version} installed (if internet was available)
+  Test Go: go version
+  
+  Network troubleshooting: ./fix-network.sh
+  
+  Ready for security testing!
 """
 
 def create_meta_data(config):
@@ -246,13 +362,17 @@ local-hostname: {config.vm_hostname}
 """
 
 def create_network_config():
-    """Generate network-config to force DHCP"""
+    """Generate network-config to force DHCP with proper security"""
     return """version: 2
 ethernets:
   ens160:
     dhcp4: true
+    dhcp4-overrides:
+      use-hostname: false
   ens192:
     dhcp4: true
+    dhcp4-overrides:
+      use-hostname: false
 """
 
 def create_iso(user_data_path, meta_data_path, network_config_path, iso_path, logger):
