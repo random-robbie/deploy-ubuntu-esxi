@@ -1,0 +1,224 @@
+# =============================================================================
+# Security-focused .gitignore for Penetration Testing Environment
+# =============================================================================
+
+# ===== CREDENTIALS & SENSITIVE DATA =====
+# Environment files with credentials
+.env
+.env.local
+.env.*.local
+.esxi_password
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+
+# SSH keys
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.pub
+
+# API keys and tokens
+api_keys.txt
+tokens.txt
+secrets.*
+credentials.*
+
+# Password files
+passwords.txt
+wordlists/
+hashes.txt
+*.hash
+
+# ===== PENTESTING SPECIFIC =====
+# Exploit outputs and PoCs
+exploits/
+payloads/
+shells/
+reverse_shells/
+webshells/
+*.exe
+*.dll
+*.bin
+*.payload
+
+# Scan results and reports
+scans/
+reports/
+nmap_*
+*.nmap
+*.gnmap
+*.xml
+scan_results/
+vuln_*
+
+# Target information
+targets.txt
+hosts.txt
+ips.txt
+domains.txt
+subdomains.txt
+
+# Database dumps and sensitive data
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+dumps/
+data_exfil/
+
+# ===== WORK DIRECTORIES =====
+work/
+iso/
+temp/
+tmp/
+output/
+downloads/
+loot/
+evidence/
+
+# ===== PYTHON SPECIFIC =====
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# ===== LOGS & DEBUGGING =====
+*.log
+*.out
+*.err
+logs/
+debug.log
+error.log
+access.log
+
+# ===== SYSTEM FILES =====
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows
+*.lnk
+desktop.ini
+
+# Linux
+*~
+.nfs*
+
+# ===== TEMPORARY FILES =====
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.#*
+\#*#
+.*.swp
+.*.swo
+
+# ===== CERTIFICATES & KEYS =====
+# SSL/TLS certificates
+*.crt
+*.cer
+*.ca-bundle
+*.p7b
+*.p7s
+*.p7r
+
+# Private keys
+*.key
+*.pem
+*.der
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# ===== BROWSER & SESSION DATA =====
+cookies.txt
+session_*
+auth_tokens
+beef_*
+
+# ===== VM & CONTAINER FILES =====
+*.ova
+*.ovf
+*.vmdk
+*.vmx
+*.vbox
+*.qcow2
+*.vdi
+*.vhd
+*.iso
+
+# Docker
+Dockerfile.local
+docker-compose.override.yml
+.dockerignore
+
+# ===== ARCHIVE FILES =====
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.bz2
+*.xz
+
+# ===== OFFICE & DOCUMENTS =====
+*.docx
+*.xlsx
+*.pptx
+*.pdf
+# Note: Comment out the above if you need to track legitimate documentation
+
+# ===== IDE & EDITOR FILES =====
+.vscode/
+.idea/
+*.sublime-*
+.atom/
+*.code-workspace
+
+# ===== CUSTOM PENTEST TOOLS =====
+# Add your custom tool outputs here
+# custom_scanner_output/
+# my_exploit_framework/
+# client_specific_tools/
