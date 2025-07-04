@@ -365,15 +365,14 @@ def create_network_config():
     """Generate network-config to force DHCP with proper security"""
     return """version: 2
 ethernets:
-  ens160:
-    dhcp4: true
-    dhcp4-overrides:
-      use-hostname: false
-  ens192:
+  primary:
+    match:
+      name: "e*"
     dhcp4: true
     dhcp4-overrides:
       use-hostname: false
 """
+
 
 def create_iso(user_data_path, meta_data_path, network_config_path, iso_path, logger):
     """Create ISO using available tool with network-config"""
